@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import time
 
 import prometheus_client
 from prometheus_client import multiprocess
@@ -83,11 +84,17 @@ def SetupPrometheusEndpointOnPortRange(port_range, addr=""):
         "with --noreload. See documentation/exports.md."
     )
     for port in port_range:
-        try:
-            httpd = HTTPServer((addr, port), prometheus_client.MetricsHandler)
-        except OSError:
-            # Python 2 raises socket.error, in Python 3 socket.error is an
-            # alias for OSError
+        httpd = None
+        for t in range(3):
+            try:
+                httpd = HTTPServer((addr, port), prometheus_client.MetricsHandler)
+                break
+            except OSError:
+                # Wait 1 second between retries (useful when restarting uwsgi)
+                time.sleep(1)
+                # Python 2 raises socket.error, in Python 3 socket.error is an
+                # alias for OSError
+        if httpd is None:
             continue  # Try next port
         thread = PrometheusEndpointServer(httpd)
         thread.daemon = True
